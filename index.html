@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Formulario CRUD con localStorage</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f0f2f5; color: #333; }
+        .container { max-width: 800px; margin: auto; background-color: #fff; padding: 25px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        h1, h2 { color: #0056b3; text-align: center; }
+        h2 { margin-top: 30px; border-bottom: 2px solid #eee; padding-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+        label { display: block; margin-top: 15px; margin-bottom: 5px; font-weight: bold; color: #555; }
+        input[type="text"], input[type="email"], input[type="number"], select {
+            width: calc(100% - 22px); padding: 10px; margin-bottom: 15px; border: 1px solid #ccc; border-radius: 4px;
+            box-sizing: border-box; transition: border-color 0.3s;
+        }
+        input:focus, select:focus { border-color: #007bff; outline: none; }
+        .form-buttons { margin-top: 20px; text-align: right; }
+        button {
+            background-color: #007bff; color: white; padding: 10px 20px; border: none;
+            border-radius: 4px; cursor: pointer; margin-left: 10px; font-size: 16px;
+            transition: background-color 0.3s;
+        }
+        button:hover { background-color: #0056b3; }
+        button.edit { background-color: #ffc107; color: #212529; }
+        button.edit:hover { background-color: #e0a800; }
+        button.delete { background-color: #dc3545; }
+        button.delete:hover { background-color: #c82333; }
+        button.new { background-color: #28a745; }
+        button.new:hover { background-color: #1e7e34; }
+        button.toggle-table { background-color: #17a2b8; font-size: 14px; padding: 8px 15px; } /* Cambiado color para destacar */
+        button.toggle-table:hover { background-color: #117a8b; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 25px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        th, td { text-align: left; padding: 12px; border-bottom: 1px solid #e0e0e0; }
+        th { background-color: #007bff; color: white; font-weight: bold; }
+        tr:nth-child(even) { background-color: #f8f9fa; }
+        tr:hover { background-color: #e9ecef; }
+        .mensaje {
+            padding: 12px; margin-top: 20px; margin-bottom: 20px; border-radius: 4px;
+            font-size: 15px; text-align: center;
+        }
+        .mensaje.exito { background-color: #d1e7dd; color: #0f5132; border: 1px solid #badbcc; }
+        .mensaje.error { background-color: #f8d7da; color: #842029; border: 1px solid #f5c2c7; }
+        .actions-column { width: 150px; text-align: center;}
+
+        /* Ocultar el contenedor de la tabla por defecto */
+        #tablaContainer {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Gestión de Registros (BD)</h1>
+        <div id="mensaje" class="mensaje" style="display:none;"></div>
+
+        <form id="registroForm">
+            <input type="hidden" id="registroId" name="id">
+            <div>
+                <label for="nombre">Nombre:</label>
+                <input type="text" id="nombre" name="nombre" required>
+            </div>
+            <div>
+                <label for="email">Email:</label>
+                <input type="email" id="email" name="email" required>
+            </div>
+            <div>
+                <label for="edad">Edad:</label>
+                <input type="number" id="edad" name="edad" min="0">
+            </div>
+            <div class="form-buttons">
+                <button type="submit" id="btnGuardar">Guardar</button>
+                <button type="button" id="btnNuevo" class="new">Nuevo</button>
+            </div>
+        </form>
+
+        <h2>
+            Registros Actuales
+            <button id="btnToggleTabla" class="toggle-table">Mostrar Tabla</button> <!--{/* Texto inicial cambiado */}-->
+        </h2>
+        <div id="tablaContainer"> <!--{/* Este div se ocultará/mostrará */}-->
+            <table id="registrosTable">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Nombre</th>
+                        <th>Email</th>
+                        <th>Edad</th>
+                        <th class="actions-column">Acciones</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <!-- Los datos se cargarán aquí -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <script>
+        const LOCAL_STORAGE_KEY = 'mis_registros_app';
+        const form = document.getElementById('registroForm');
+        const tablaRegistrosBody = document.querySelector('#registrosTable tbody');
+        const mensajeDiv = document.getElementById('mensaje');
+        const btnGuardar = document.getElementById('btnGuardar');
+        const btnNuevo = document.getElementById('btnNuevo');
+        const registroIdInput = document.getElementById('registroId');
+        const btnToggleTabla = document.getElementById('btnToggleTabla'); 
+        const tablaContainer = document.getElementById('tablaContainer'); 
+        
+        let registros = [];
+        let editandoId = null;
+        let tablaVisible = false; // Estado inicial de la visibilidad de la tabla: oculta
+
+        // --- Funciones de manejo de datos (localStorage) ---
+
+        function cargarRegistrosDesdeStorage() {
+            const registrosString = localStorage.getItem(LOCAL_STORAGE_KEY);
+            registros = registrosString ? JSON.parse(registrosString) : [];
+        }
+
+        function guardarRegistrosEnStorage() {
+            localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(registros));
+        }
+
+        function obtenerSiguienteId() {
+            if (registros.length === 0) return 1;
+            return Math.max(...registros.map(r => r.id)) + 1;
+        }
+
+        // --- Funciones de la UI ---
+        function mostrarMensaje(texto, tipo = 'exito') {
+            mensajeDiv.textContent = texto;
+            mensajeDiv.className = `mensaje ${tipo}`;
+            mensajeDiv.style.display = 'block';
+            setTimeout(() => { mensajeDiv.style.display = 'none'; }, 3000);
+        }
+
+        function limpiarFormulario() {
+            form.reset();
+            registroIdInput.value = '';
+            editandoId = null;
+            btnGuardar.textContent = 'Guardar';
+            btnGuardar.classList.remove('edit'); 
+        }
+
+        function actualizarVisibilidadTabla() {
+            if (tablaVisible) {
+                tablaContainer.style.display = 'block';
+                btnToggleTabla.textContent = 'Ocultar Tabla';
+            } else {
+                tablaContainer.style.display = 'none';
+                btnToggleTabla.textContent = 'Mostrar Tabla';
+            }
+        }
+
+        // --- Funciones CRUD (Interactuando con `registros` y localStorage) ---
+
+        function renderizarTabla() {
+            tablaRegistrosBody.innerHTML = ''; 
+            if (registros.length === 0 && tablaVisible) { // Solo mostrar mensaje si la tabla está visible
+                const fila = tablaRegistrosBody.insertRow();
+                const celda = fila.insertCell();
+                celda.colSpan = 5;
+                celda.textContent = 'No hay registros para mostrar.';
+                celda.style.textAlign = 'center';
+                return;
+            }
+            
+            // Renderizar filas solo si hay registros
+            if (registros.length > 0) {
+                registros.forEach(registro => {
+                    const fila = tablaRegistrosBody.insertRow();
+                    fila.innerHTML = `
+                        <td>${registro.id}</td>
+                        <td>${registro.nombre}</td>
+                        <td>${registro.email}</td>
+                        <td>${registro.edad || ''}</td>
+                        <td class="actions-column">
+                            <button class="edit" onclick="prepararEdicion(${registro.id})">Editar</button>
+                            <button class="delete" onclick="borrarRegistro(${registro.id})">Borrar</button>
+                        </td>
+                    `;
+                });
+            } else if (registros.length === 0 && !tablaVisible) {
+                // No hacer nada si no hay registros y la tabla está oculta, ya que no se ve.
+            }
+        }
+
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            
+            const nombre = document.getElementById('nombre').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const edadInput = document.getElementById('edad').value;
+            const edad = edadInput ? parseInt(edadInput) : null;
+
+            if (!nombre || !email) {
+                mostrarMensaje('Nombre y Email son campos obligatorios.', 'error');
+                return;
+            }
+            
+            const datosRegistro = { nombre, email, edad };
+
+            if (editandoId) { 
+                const index = registros.findIndex(r => r.id === editandoId);
+                if (index !== -1) {
+                    registros[index] = { ...registros[index], ...datosRegistro };
+                    mostrarMensaje('Registro actualizado con éxito.');
+                } else {
+                    mostrarMensaje('Error: No se encontró el registro para actualizar.', 'error');
+                    limpiarFormulario();
+                    renderizarTabla(); 
+                    return;
+                }
+            } else { 
+                datosRegistro.id = obtenerSiguienteId();
+                registros.push(datosRegistro);
+                mostrarMensaje('Registro creado con éxito.');
+            }
+
+            guardarRegistrosEnStorage();
+            limpiarFormulario();
+            renderizarTabla(); // Siempre renderizar, la visibilidad se controla aparte
+            // Opcional: Si quieres que la tabla se muestre automáticamente después de guardar/editar:
+            // if (!tablaVisible) {
+            //     tablaVisible = true;
+            //     actualizarVisibilidadTabla();
+            // }
+        });
+
+        function prepararEdicion(id) {
+            const registro = registros.find(r => r.id === id);
+            if (registro) {
+                registroIdInput.value = registro.id;
+                document.getElementById('nombre').value = registro.nombre;
+                document.getElementById('email').value = registro.email;
+                document.getElementById('edad').value = registro.edad || '';
+                
+                editandoId = registro.id;
+                btnGuardar.textContent = 'Actualizar';
+                btnGuardar.classList.add('edit');
+                window.scrollTo(0, 0); 
+            } else {
+                mostrarMensaje('Error: No se pudo encontrar el registro para editar.', 'error');
+            }
+        }
+
+        function borrarRegistro(id) {
+            if (!confirm(`¿Estás seguro de que quieres borrar el registro con ID ${id}?`)) {
+                return;
+            }
+            
+            const indice = registros.findIndex(r => r.id === id);
+            if (indice !== -1) {
+                registros.splice(indice, 1);
+                guardarRegistrosEnStorage();
+                renderizarTabla();
+                mostrarMensaje('Registro eliminado con éxito.');
+                if (editandoId === id) { 
+                    limpiarFormulario();
+                }
+                 // Si la tabla está visible y se queda vacía, mostrar mensaje de "No hay registros"
+                if (tablaVisible && registros.length === 0) {
+                    renderizarTabla();
+                }
+            } else {
+                 mostrarMensaje('Error: No se pudo encontrar el registro para borrar.', 'error');
+            }
+        }
+        
+        btnNuevo.addEventListener('click', () => {
+            limpiarFormulario();
+            document.getElementById('nombre').focus(); 
+        });
+
+        btnToggleTabla.addEventListener('click', () => {
+            tablaVisible = !tablaVisible;
+            actualizarVisibilidadTabla();
+            if (tablaVisible) { // Si se acaba de hacer visible, renderizarla
+                renderizarTabla();
+            }
+        });
+
+        document.addEventListener('DOMContentLoaded', () => {
+            cargarRegistrosDesdeStorage();
+            // renderizarTabla(); // No renderizar aquí inicialmente si está oculta
+            actualizarVisibilidadTabla(); // Establece el estado inicial (oculto y botón "Mostrar Tabla")
+        });
+    </script>
+</body>
+</html>
